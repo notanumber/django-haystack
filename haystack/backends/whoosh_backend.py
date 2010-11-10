@@ -128,24 +128,19 @@ class SearchBackend(BaseSearchBackend):
         content_field_name = ''
         
         for field_name, field_class in fields.items():
-            if isinstance(field_class, MultiValueField):
+            if field_class.is_multivalued:
                 if field_class.indexed is False:
                     schema_fields[field_class.index_fieldname] = IDLIST(stored=True)
                 else:
                     schema_fields[field_class.index_fieldname] = KEYWORD(stored=True, commas=True, scorable=True)
-            elif isinstance(field_class, (DateField, DateTimeField)):
+            elif field_class.field_type in ['date', 'datetime']:
                 schema_fields[field_class.index_fieldname] = DATETIME(stored=field_class.stored)
-            elif isinstance(field_class, BooleanField):
-                schema_fields[field_class.index_fieldname] = BOOLEAN(stored=field_class.stored)
-            elif isinstance(field_class, (DateField, DateTimeField, BooleanField)):
-                if field_class.indexed is False:
-                    schema_fields[field_class.index_fieldname] = STORED
-                else:
-                    schema_fields[field_class.index_fieldname] = ID(stored=True)
-            elif isinstance(field_class, IntegerField):
+            elif field_class.field_type == 'integer':
                 schema_fields[field_class.index_fieldname] = NUMERIC(stored=field_class.stored, type=int)
-            elif isinstance(field_class, FloatField):
+            elif field_class.field_type == 'float':
                 schema_fields[field_class.index_fieldname] = NUMERIC(stored=field_class.stored, type=float)
+            elif field_class.field_type == 'boolean':
+                schema_fields[field_class.index_fieldname] = BOOLEAN(stored=field_class.stored)
             else:
                 schema_fields[field_class.index_fieldname] = TEXT(stored=True, analyzer=StemmingAnalyzer())
             
@@ -343,9 +338,6 @@ class SearchBackend(BaseSearchBackend):
             # Handle the case where the results have been narrowed.
             if narrowed_results:
                 raw_results.filter(narrowed_results)
-            
-            # Make sure we don't process bits we already have.
-            # import pdb; pdb.set_trace()
             
             # Determine the page.
             page_num = 0
@@ -599,7 +591,7 @@ class SearchQuery(BaseSearchQuery):
         if hasattr(value, 'strftime'):
             is_datetime = True
         
-        if filter_type != 'in':
+        if not filter_type in ('in', 'range'):
             # 'in' is a bit of a special case, as we don't want to
             # convert a valid list/tuple to string. Defer handling it
             # until later...
@@ -625,12 +617,7 @@ class SearchQuery(BaseSearchQuery):
                 'startswith': "%s:%s*",
             }
             
-            if filter_type != 'in':
-                if is_datetime is True:
-                    value = self._convert_datetime(value)
-                
-                result = filter_types[filter_type] % (index_fieldname, value)
-            else:
+            if filter_type == 'in':
                 in_options = []
                 
                 for possible_value in value:
@@ -647,5 +634,21 @@ class SearchQuery(BaseSearchQuery):
                     in_options.append('%s:"%s"' % (index_fieldname, pv))
                 
                 result = "(%s)" % " OR ".join(in_options)
+            elif filter_type == 'range':
+                start = self.backend._from_python(value[0])
+                end = self.backend._from_python(value[1])
+                
+                if hasattr(value[0], 'strftime'):
+                    start = self._convert_datetime(start)
+                
+                if hasattr(value[1], 'strftime'):
+                    end = self._convert_datetime(end)
+                
+                return "%s:[%s TO %s]" % (index_fieldname, start, end)
+            else:
+                if is_datetime is True:
+                    value = self._convert_datetime(value)
+                
+                result = filter_types[filter_type] % (index_fieldname, value)
         
         return result

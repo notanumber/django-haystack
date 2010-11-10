@@ -19,8 +19,8 @@ class MockSearchBackend(BaseSearchBackend):
     mock_search_results = MOCK_SEARCH_RESULTS
     
     def __init__(self, site=None):
+        super(MockSearchBackend, self).__init__(site)
         self.docs = {}
-        self.site = site
     
     def update(self, index, iterable, commit=True):
         for obj in iterable:
@@ -43,7 +43,7 @@ class MockSearchBackend(BaseSearchBackend):
         hits = len(self.mock_search_results)
         indexed_models = site.get_indexed_models()
         
-        sliced = self.mock_search_results[start_offset:end_offset]
+        sliced = self.mock_search_results
         
         for result in sliced:
             model = get_model('core', self.model_name)
@@ -57,7 +57,7 @@ class MockSearchBackend(BaseSearchBackend):
                 hits -= 1
         
         return {
-            'results': results,
+            'results': results[start_offset:end_offset],
             'hits': hits,
         }
     
@@ -112,3 +112,8 @@ class MockSearchQuery(BaseSearchQuery):
         results = self.backend.more_like_this(self._mlt_instance, final_query)
         self._results = results['results'][self.start_offset:self.end_offset]
         self._hit_count = results['hits']
+
+
+# For pickling tests.
+SearchBackend = MockSearchBackend
+SearchQuery = MockSearchQuery

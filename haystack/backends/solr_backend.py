@@ -3,12 +3,10 @@ import sys
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.db.models.loading import get_model
-from django.utils.encoding import force_unicode
 from haystack.backends import BaseSearchBackend, BaseSearchQuery, log_query
 from haystack.exceptions import MissingDependency, MoreLikeThisError
-from haystack.fields import DateField, DateTimeField, IntegerField, FloatField, BooleanField, MultiValueField
 from haystack.models import SearchResult
-from haystack.utils import get_identifier, get_facet_field_name
+from haystack.utils import get_identifier
 try:
     set
 except NameError:
@@ -325,18 +323,16 @@ class SearchBackend(BaseSearchBackend):
             # DRL_FIXME: Perhaps move to something where, if none of these
             #            checks succeed, call a custom method on the form that
             #            returns, per-backend, the right type of storage?
-            # DRL_FIXME: Also think about removing `isinstance` and replacing
-            #            it with a method call/string returned (like 'text' or
-            #            'date').
-            if isinstance(field_class, (DateField, DateTimeField)):
+            if field_class.field_type in ['date', 'datetime']:
                 field_data['type'] = 'date'
-            elif isinstance(field_class, IntegerField):
+            elif field_class.field_type == 'integer':
                 field_data['type'] = 'slong'
-            elif isinstance(field_class, FloatField):
+            elif field_class.field_type == 'float':
                 field_data['type'] = 'sfloat'
-            elif isinstance(field_class, BooleanField):
+            elif field_class.field_type == 'boolean':
                 field_data['type'] = 'boolean'
-            elif isinstance(field_class, MultiValueField):
+            
+            if field_class.is_multivalued:
                 field_data['multi_valued'] = 'true'
             
             if field_class.stored is False:
@@ -401,15 +397,19 @@ class SearchQuery(BaseSearchQuery):
                 'startswith': "%s:%s*",
             }
             
-            if filter_type != 'in':
-                result = filter_types[filter_type] % (index_fieldname, value)
-            else:
+            if filter_type == 'in':
                 in_options = []
                 
                 for possible_value in value:
                     in_options.append('%s:"%s"' % (index_fieldname, self.backend.conn._from_python(possible_value)))
                 
                 result = "(%s)" % " OR ".join(in_options)
+            elif filter_type == 'range':
+                start = self.backend.conn._from_python(value[0])
+                end = self.backend.conn._from_python(value[1])
+                return "%s:[%s TO %s]" % (index_fieldname, start, end)
+            else:
+                result = filter_types[filter_type] % (index_fieldname, value)
         
         return result
     

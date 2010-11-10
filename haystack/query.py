@@ -38,7 +38,16 @@ class SearchQuerySet(object):
         len(self)
         obj_dict = self.__dict__.copy()
         obj_dict['_iter'] = None
+        del obj_dict['site']
         return obj_dict
+
+    def __setstate__(self, dict):
+        """
+        For unpickling.
+        """
+        self.__dict__ = dict
+        from haystack import site as main_site
+        self.site = main_site
     
     def __repr__(self):
         data = list(self[:REPR_OUTPUT_SIZE])
@@ -374,13 +383,11 @@ class SearchQuerySet(object):
     
     def count(self):
         """Returns the total number of matching results."""
-        clone = self._clone()
-        return len(clone)
+        return len(self)
     
     def best_match(self):
         """Returns the best/top search result that matches the query."""
-        clone = self._clone()
-        return clone[0]
+        return self[0]
     
     def latest(self, date_field):
         """Returns the most recent search result that matches the query."""
